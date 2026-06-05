@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Coelho da Sorte Ultimate</title>
+<style>
+html,body{margin:0;overflow:hidden;background:#222;font-family:Arial}
+canvas{display:block}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+
+function resize(){canvas.width=innerWidth;canvas.height=innerHeight;}
+resize(); addEventListener("resize",resize);
+
+// IMAGENS (coloque na mesma pasta do HTML)
+const bg=new Image(); bg.src="background.png";
+const personagem=new Image(); personagem.src="personagem.png";
+const lousa=new Image(); lousa.src="lousa.png";
+
+const player={x:700,y:500,w:120,h:120,speed:8};
+let left=false,right=false;
+
+let gameOver=false;
+let venceu=false;
+let tempo=300;
+let carregando=null;
+let dezenaAtual="";
+
+const missoes=[];
+const concluidas=new Set();
+
+while(missoes.length<10){
+ let d=String(Math.floor(Math.random()*100)).padStart(2,"0");
+ if(!missoes.includes(d)) missoes.push(d);
+}
+
+let bolas=[];
+
+function digitosNecessarios(){
+ const arr=[];
+ for(const d of missoes){
+   if(!concluidas.has(d)){
+     arr.push(+d[0]);
+     arr.push(+d[1]);
+   }
+ }
+ return arr;
+}
+
+function novaBola(){
+ const pool=digitosNecessarios();
+ const numero=(Math.random()<0.75 && pool.length)
+ ? pool[Math.floor(Math.random()*pool.length)]
+ : Math.floor(Math.random()*10);
+
+ return {
+   x:Math.random()*(canvas.width-120),
+   y:-40,
+   r:30,
+   numero,
+   cor:`hsl(${Math.random()*360},85%,60%)`,
+   speed:2+Math.random()*3
+ };
+}
+
+for(let i=0;i<6;i++) bolas.push(novaBola());
+
+setInterval(()=>{
+ if(gameOver) return;
+ tempo--;
+ if(tempo<=0){
+   tempo=0;
+   gameOver=true;
+ }
+},1000);
+
+addEventListener("keydown",e=>{
+ if(e.key==="ArrowLeft") left=true;
+ if(e.key==="ArrowRight") right=true;
+});
+
+addEventListener("keyup",e=>{
+ if(e.key==="ArrowLeft") left=false;
+ if(e.key==="ArrowRight") right=false;
+});
+
+canvas.addEventListener("touchstart",e=>{
+ const x=e.touches[0].clientX;
+ if(x<innerWidth/2) left=true;
+ else right=true;
+});
+
+canvas.addEventListener("touchend",()=>{
+ left=false; right=false;
+});
+
+function colide(b){
+ const px=player.x+player.w/2;
+ const py=player.y+player.h/2;
+ return Math.hypot(px-b.x,py-b.y)<60;
+}
+
+function update(){
+ if(gameOver) return;
+
+ if(left) player.x-=player.speed;
+ if(right) player.x+=player.speed;
+
+ player.x=Math.max(0,Math.min(canvas.width-player.w,player.x));
+
+ for(let i=bolas.length-1;i>=0;i--){
+   const b=bolas[i];
+   b.y+=b.speed;
+
+   if(!carregando && colide(b)){
+      carregando=b.numero;
+      bolas.splice(i,1);
+      bolas.push(novaBola());
+      continue;
+   }
+
+   if(b.y>canvas.height+60){
+      bolas.splice(i,1);
+      bolas.push(novaBola());
+   }
+ }
+
+ if(player.x<220 && carregando!==null){
+   dezenaAtual+=carregando;
+   carregando=null;
+
+   if(dezenaAtual.length===2){
+
+      if(missoes.includes(dezenaAtual)){
+         concluidas.add(dezenaAtual);
+      }
+
+      dezenaAtual="";
+
+      if(concluidas.size===10){
+         venceu=true;
+         gameOver=true;
+      }
+   }
+ }
+}
+
+function draw(){
+
+ if(bg.complete) ctx.drawImage(bg,0,0,canvas.width,canvas.height);
+ else{
+   ctx.fillStyle="#4caf50";
+   ctx.fillRect(0,0,canvas.width,canvas.height);
+ }
+
+ if(lousa.complete) ctx.drawImage(lousa,10,10,210,canvas.height-20);
+ else{
+   ctx.fillStyle="#111";
+   ctx.fillRect(10,10,210,canvas.height-20);
+ }
+
+ ctx.fillStyle="white";
+ ctx.font="22px Arial";
+ ctx.fillText("MISSÃO",65,40);
+
+ for(let i=0;i<missoes.length;i++){
+   const d=missoes[i];
+   ctx.fillStyle=concluidas.has(d)?"#00ff66":"white";
+   ctx.fillText((concluidas.has(d)?"✓ ":"")+d,40,80+i*30);
+ }
+
+ ctx.fillStyle="yellow";
+ ctx.font="36px Arial";
+ ctx.fillText(dezenaAtual.padEnd(2,"_"),70,410);
+
+ for(const b of bolas){
+   ctx.beginPath();
+   ctx.fillStyle=b.cor;
+   ctx.arc(b.x,b.y,b.r,0,Math.PI*2);
+   ctx.fill();
+
+   ctx.fillStyle="#000";
+   ctx.font="24px Arial";
+   ctx.fillText(b.numero,b.x-7,b.y+8);
+ }
+
+ if(personagem.complete){
+   ctx.drawImage(personagem,player.x,player.y,player.w,player.h);
+ }else{
+   ctx.font="90px Arial";
+   ctx.fillText("⚽",player.x,player.y+80);
+ }
+
+ if(carregando!==null){
+   ctx.beginPath();
+   ctx.fillStyle="gold";
+   ctx.arc(player.x+60,player.y-10,25,0,Math.PI*2);
+   ctx.fill();
+   ctx.fillStyle="#000";
+   ctx.font="18px Arial";
+   ctx.fillText(carregando,player.x+54,player.y-2);
+ }
+
+ const m=Math.floor(tempo/60);
+ const s=String(tempo%60).padStart(2,"0");
+
+ ctx.fillStyle="white";
+ ctx.font="24px Arial";
+ ctx.fillText("Tempo: "+m+":"+s,250,40);
+ ctx.fillText("Concluídas: "+concluidas.size+"/10",250,75);
+
+ if(gameOver){
+   ctx.fillStyle="rgba(0,0,0,0.88)";
+   ctx.fillRect(0,0,canvas.width,canvas.height);
+
+   ctx.fillStyle=venceu?"#00ff66":"#ff4444";
+   ctx.font="56px Arial";
+   ctx.fillText(venceu?"VOCÊ VENCEU!":"TEMPO ESGOTADO!",40,90);
+
+   ctx.fillStyle="white";
+   ctx.font="30px Arial";
+   ctx.fillText("Missões concluídas: "+concluidas.size+"/10",40,150);
+
+   if(!venceu){
+      ctx.fillText("Faltaram:",40,210);
+      let y=260;
+      for(const d of missoes){
+         if(!concluidas.has(d)){
+            ctx.fillText(d,60,y);
+            y+=35;
+         }
+      }
+   }
+
+   ctx.font="24px Arial";
+   ctx.fillText("Recarregue a página para jogar novamente",40,canvas.height-40);
+ }
+}
+
+function loop(){
+ update();
+ draw();
+ requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
