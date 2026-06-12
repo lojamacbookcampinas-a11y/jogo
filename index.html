@@ -3,244 +3,238 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Copa 2026 Audio Edition</title>
+<title>Desafio das Dezenas</title>
 <style>
-html,body{margin:0;overflow:hidden;background:#222;font-family:Arial}
+*{margin:0;padding:0;box-sizing:border-box}
+body{overflow:hidden;font-family:Arial,sans-serif;background:#111}
+#hud{position:fixed;top:0;left:0;width:100%;height:80px;background:rgba(255,255,255,.85);
+display:flex;justify-content:space-around;align-items:center;font-weight:bold;z-index:10}
 canvas{display:block}
+#start,#overlay{position:fixed;inset:0;display:flex;flex-direction:column;justify-content:center;
+align-items:center;background:rgba(0,0,0,.85);color:#fff;z-index:20}
+#overlay{display:none}
+button{padding:15px 30px;font-size:22px;border:none;border-radius:12px;cursor:pointer}
 </style>
 </head>
 <body>
 
-<div id="loginScreen" style="position:fixed;inset:0;background:rgba(0,0,0,.92);display:flex;flex-direction:column;justify-content:center;align-items:center;color:white;z-index:9999">
-<h1>⚽ COPA 2026</h1>
-<h2>INSIRA SUA MOEDA OU CÓDIGO</h2>
-<div id="codigoView" style="font-size:48px;letter-spacing:10px">______</div>
-<div id="msg"></div>
-<p>Digite 6 números e pressione ENTER</p>
+<div id="hud">
+<div>DEZENA: <span id="target">00</span></div>
+<div><span id="stage">0</span>/10</div>
+<div><span id="timer">02:30</span></div>
+</div>
+
+<div id="start">
+
+<h1>⚽ DESAFIO DAS DEZENAS</h1>
+
+<p>Digite seu código</p>
+
+<input
+ id="codigo"
+ type="tel"
+ maxlength="8"
+ inputmode="numeric"
+ placeholder="Código de 8 dígitos"
+ style="
+ padding:15px;
+ font-size:28px;
+ text-align:center;
+ width:260px;
+ border-radius:10px;
+ border:none;
+ margin:20px;
+ ">
+
+<div id="loginMsg"
+style="
+height:30px;
+color:#ffcc00;
+font-weight:bold;
+">
+</div>
+
+<button onclick="validarCodigo()">
+VALIDAR
+</button>
+
+</div>
+
+<div id="overlay">
+<h1 id="title"></h1>
+<p id="msg"></p><br>
+<button onclick="location.reload()">REINICIAR</button>
 </div>
 
 <canvas id="game"></canvas>
+
 <script>
 const canvas=document.getElementById("game");
 const ctx=canvas.getContext("2d");
 
-function resize(){canvas.width=innerWidth;canvas.height=innerHeight;}
-resize(); addEventListener("resize",resize);
+function resize(){
+ canvas.width=innerWidth;
+ canvas.height=innerHeight;
+}
+resize();
+addEventListener("resize",resize);
 
-const bg=new Image(); bg.src="background.png";
-const personagem=new Image(); personagem.src="personagem.png";
-const lousa=new Image(); lousa.src="lousa.png";
-const bolaImg=new Image(); bolaImg.src="bola.png";
+const bg=new Image();
+bg.src="img/fundo.png";
 
-const musica=new Audio("background.m4a");
-musica.loop=true;
-musica.volume=0.3;
+const ballImg=new Image();
+ballImg.src="img/bola.png";
 
-const somCaptura=new Audio("captura.m4a");
-const somDezena=new Audio("dezena.m4a");
-const somVitoria=new Audio("vitoria.m4a");
-const somDerrota=new Audio("derrota.m4a");
+// AUDIOS
+const bgMusic = new Audio("audio/musica.mp3");
+bgMusic.loop = true;
+bgMusic.volume = 0.25;
 
-let audioIniciado=false;
-function iniciarAudio(){
- if(audioIniciado) return;
- audioIniciado=true;
- musica.play().catch(()=>{});
+const acertoSound = new Audio("audio/acerto.mp3");
+const erroSound = new Audio("audio/erro.mp3");
+const dezenaSound = new Audio("audio/dezena.mp3");
+
+let balls=[];
+let effects=[];
+let completed=0;
+let target="";
+let expected=0;
+let time=150;
+let running=false;
+
+function newTarget(){
+ target=(""+Math.floor(Math.random()*10)+Math.floor(Math.random()*10));
+ expected=0;
+ updateTarget();
 }
 
-const player={x:700,y:500,w:120,h:120,speed:8};
-let left=false,right=false;
-let gameOver=false,venceu=false,tempo=150;
-let carregando=null,dezenaAtual="";
-
-const missoes=[];
-const concluidas=new Set();
-
-while(missoes.length<10){
- let d=String(Math.floor(Math.random()*100)).padStart(2,"0");
- if(!missoes.includes(d)) missoes.push(d);
+function updateTarget(){
+ const el=document.getElementById("target");
+ if(expected===0) el.textContent=target;
+ else el.textContent="✓"+target[0]+" "+target[1];
 }
 
-let bolas=[];
+function spawnBall(){
+ balls.push({
+  x:55+Math.random()*(canvas.width-110),
+  y:-100,
+  r:55,
+  n:Math.floor(Math.random()*10),
+  speed:2+Math.random()*3+completed*0.3,
+  rot:Math.random()*6.28,
+  rotSpeed:0.03+Math.random()*0.05
+ });
+}
 
-function digitosNecessarios(){
- const arr=[];
- for(const d of missoes){
-   if(!concluidas.has(d)) arr.push(+d[0],+d[1]);
+function clickBall(x,y){
+ if(!running)return;
+
+ for(let i=balls.length-1;i>=0;i--){
+  let b=balls[i];
+  let d=Math.hypot(x-b.x,y-b.y);
+
+  if(d<=b.r){
+    let expectedDigit=parseInt(target[expected]);
+
+    if(b.n===expectedDigit){
+
+      acertoSound.currentTime=0;
+      acertoSound.play();
+
+      expected++;
+      effects.push({x:b.x,y:b.y,t:"✓",life:40,c:"#00ff66"});
+
+      if(expected>=2){
+
+        dezenaSound.currentTime=0;
+        dezenaSound.play();
+
+        completed++;
+        document.getElementById("stage").textContent=completed;
+
+        if(completed>=10){
+          finish(true);
+          return;
+        }
+        newTarget();
+      }
+
+    }else{
+
+      erroSound.currentTime=0;
+      erroSound.play();
+
+      expected=0;
+      effects.push({x:b.x,y:b.y,t:"✖",life:40,c:"#ff3333"});
+      updateTarget();
+    }
+
+    balls.splice(i,1);
+    return;
+  }
  }
- return arr;
 }
 
-function novaBola(){
- const pool=digitosNecessarios();
- const numero=(Math.random()<0.75&&pool.length)
- ? pool[Math.floor(Math.random()*pool.length)]
- : Math.floor(Math.random()*10);
-
- return {x:Math.random()*(canvas.width-120),y:-40,numero,speed:2+Math.random()*3,rotacao:0};
-}
-
-for(let i=0;i<6;i++) bolas.push(novaBola());
-
-setInterval(()=>{
- if(!jogoLiberado || gameOver) return;
- tempo--;
- if(tempo<=0){
-   tempo=0;
-   gameOver=true;
-   musica.pause();
-   somDerrota.play().catch(()=>{});
-   
- }
-},1000);
-
-addEventListener("keydown",e=>{
- iniciarAudio();
- if(e.key==="ArrowLeft") left=true;
- if(e.key==="ArrowRight") right=true;
-});
-
-addEventListener("keyup",e=>{
- if(e.key==="ArrowLeft") left=false;
- if(e.key==="ArrowRight") right=false;
-});
-
+canvas.addEventListener("click",e=>clickBall(e.clientX,e.clientY));
 canvas.addEventListener("touchstart",e=>{
- iniciarAudio();
- const x=e.touches[0].clientX;
- if(x<innerWidth/2) left=true;
- else right=true;
-});
-
-canvas.addEventListener("touchend",()=>{
- left=false;
- right=false;
-});
-
-function colide(b){
- const px=player.x+player.w/2;
- const py=player.y+player.h/2;
- return Math.hypot(px-b.x,py-b.y)<60;
-}
+ e.preventDefault();
+ clickBall(e.touches[0].clientX,e.touches[0].clientY);
+},{passive:false});
 
 function update(){
- if(!jogoLiberado || gameOver) return;
+ if(!running)return;
 
- if(left) player.x-=player.speed;
- if(right) player.x+=player.speed;
+ if(Math.random()<0.05) spawnBall();
 
- player.x=Math.max(0,Math.min(canvas.width-player.w,player.x));
-
- for(let i=bolas.length-1;i>=0;i--){
-   const b=bolas[i];
+ balls.forEach(b=>{
    b.y+=b.speed;
-   b.rotacao+=0.05;
+   b.rot+=b.rotSpeed;
+ });
 
-   if(!carregando && colide(b)){
-      somCaptura.currentTime=0;
-      somCaptura.play().catch(()=>{});
+ balls=balls.filter(b=>b.y<canvas.height+100);
 
-      carregando=b.numero;
-      bolas.splice(i,1);
-      bolas.push(novaBola());
-      continue;
-   }
-
-   if(b.y>canvas.height+60){
-      bolas.splice(i,1);
-      bolas.push(novaBola());
-   }
- }
-
- if(player.x<220 && carregando!==null){
-   dezenaAtual+=carregando;
-   carregando=null;
-
-   if(dezenaAtual.length===2){
-
-      if(missoes.includes(dezenaAtual)){
-         concluidas.add(dezenaAtual);
-         somDezena.currentTime=0;
-         somDezena.play().catch(()=>{});
-      }
-
-      dezenaAtual="";
-
-      if(concluidas.size===10){
-         venceu=true;
-         gameOver=true;
-         musica.pause();
-         somVitoria.play().catch(()=>{});
-
-      }
-   }
- }
+ effects.forEach(e=>{e.y-=1;e.life--;});
+ effects=effects.filter(e=>e.life>0);
 }
 
 function draw(){
- if(bg.complete) ctx.drawImage(bg,0,0,canvas.width,canvas.height);
+ ctx.clearRect(0,0,canvas.width,canvas.height);
 
- if(lousa.complete) ctx.drawImage(lousa,10,10,210,canvas.height-20);
-
- ctx.fillStyle="white";
- ctx.font="22px Arial";
- ctx.fillText("MISSÃO",65,40);
-
- for(let i=0;i<missoes.length;i++){
-   const d=missoes[i];
-   ctx.fillStyle=concluidas.has(d)?"#00ff66":"white";
-   ctx.fillText((concluidas.has(d)?"✓ ":"")+d,40,80+i*30);
+ if(bg.complete){
+   const scale=Math.max(canvas.width/bg.width,canvas.height/bg.height);
+   const w=bg.width*scale;
+   const h=bg.height*scale;
+   const x=(canvas.width-w)/2;
+   const y=(canvas.height-h)/2;
+   ctx.drawImage(bg,x,y,w,h);
  }
 
- ctx.fillStyle="yellow";
- ctx.font="36px Arial";
- ctx.fillText(dezenaAtual.padEnd(2,"_"),70,410);
-
- for(const b of bolas){
-   ctx.save();
-   ctx.translate(b.x,b.y);
-   ctx.rotate(b.rotacao);
-   if(bolaImg.complete) ctx.drawImage(bolaImg,-32,-32,64,64);
-   ctx.restore();
+ balls.forEach(b=>{
+   if(ballImg.complete){
+      ctx.save();
+      ctx.translate(b.x,b.y);
+      ctx.rotate(b.rot);
+      ctx.drawImage(ballImg,-b.r,-b.r,b.r*2,b.r*2);
+      ctx.restore();
+   }
 
    ctx.fillStyle="black";
-   ctx.font="bold 22px Arial";
+   ctx.font="bold 34px Arial";
    ctx.textAlign="center";
-   ctx.fillText(b.numero,b.x,b.y+8);
-   ctx.textAlign="left";
- }
+   ctx.textBaseline="middle";
+   ctx.fillText(b.n,b.x+2,b.y+2);
 
- if(personagem.complete){
-   ctx.drawImage(personagem,player.x,player.y,player.w,player.h);
- }
-
- if(carregando!==null){
-   if(bolaImg.complete){
-      ctx.drawImage(bolaImg,player.x+35,player.y-35,50,50);
-   }
-   ctx.fillStyle="#000";
-   ctx.font="18px Arial";
-   ctx.fillText(carregando,player.x+54,player.y-2);
- }
-
- const m=Math.floor(tempo/60);
- const s=String(tempo%60).padStart(2,"0");
-
- ctx.fillStyle="white";
- ctx.font="24px Arial";
- ctx.fillText("Tempo: "+m+":"+s,250,40);
- ctx.fillText("Concluídas: "+concluidas.size+"/10",250,75);
-
- if(gameOver){
-   ctx.fillStyle="rgba(0,0,0,0.88)";
-   ctx.fillRect(0,0,canvas.width,canvas.height);
-   ctx.fillStyle=venceu?"#00ff66":"#ff4444";
-   ctx.font="56px Arial";
-   ctx.fillText(venceu?"VOCÊ VENCEU!":"TEMPO ESGOTADO!",40,90);
    ctx.fillStyle="white";
-   ctx.font="32px Arial";
-   ctx.fillText("APERTE START PARA RECOMEÇAR",40,160);
- }
+   ctx.fillText(b.n,b.x,b.y);
+ });
+
+ effects.forEach(e=>{
+   ctx.globalAlpha=e.life/40;
+   ctx.fillStyle=e.c;
+   ctx.font="bold 40px Arial";
+   ctx.fillText(e.t,e.x,e.y);
+   ctx.globalAlpha=1;
+ });
 }
 
 function loop(){
@@ -248,72 +242,162 @@ function loop(){
  draw();
  requestAnimationFrame(loop);
 }
+const codigosValidos = [
 
-let kioskCodigo="";
-let jogoLiberado=false;
+"88888888",
+"53179264",
+"40821635",
+"91736284",
+"22222555",
+"m7k2p9qd",
+"t4n8x1bw",
+"c9v3j7ra",
+"h2q6m8zy",
+"p5d1k4xt",
+"r8w2c7nv",
+"g3y9t1mp",
+"n6b4q8sk",
+"x1j7r5dz",
+"v9m2h6pc",
+"24681357"
 
-function atualizarCodigo(){
- document.getElementById('codigoView').textContent=(kioskCodigo+'______').substring(0,6);
-}
+];
 
-function voltarMenu(){
- document.getElementById('loginScreen').style.display='flex';
- kioskCodigo='';
- atualizarCodigo();
- document.getElementById('msg').textContent='';
- jogoLiberado=false;
- gameOver=false;
-}
+function validarCodigo(){
 
-function liberarJogo(){
- document.getElementById('loginScreen').style.display='none';
- jogoLiberado=true;
-}
+ const codigo =
+ document.getElementById("codigo")
+ .value
+ .trim();
 
-document.addEventListener('keydown',function(e){
+ if(codigo.length !== 8){
 
- if(!jogoLiberado){
+   document.getElementById("loginMsg")
+   .textContent =
+   "Digite 8 números";
 
-   if(/^[0-9]$/.test(e.key) && kioskCodigo.length<6){
-      kioskCodigo+=e.key;
-      atualizarCodigo();
-   }
-
-   if(e.key==='Backspace'){
-      kioskCodigo=kioskCodigo.slice(0,-1);
-      atualizarCodigo();
-   }
-
-   if(e.key==='Enter'){
-
-      if(kioskCodigo==='999999'){
-         liberarJogo();
-         return;
-      }
-
-      if(kioskCodigo.length!==6){
-         document.getElementById('msg').textContent='Código inválido';
-         return;
-      }
-
-      if(localStorage.getItem('codigo_'+kioskCodigo)){
-         document.getElementById('msg').textContent='Código já utilizado';
-         return;
-      }
-
-      localStorage.setItem('codigo_'+kioskCodigo,'usado');
-      liberarJogo();
-   }
+   return;
  }
 
-});
-atualizarCodigo();
+ if(!codigosValidos.includes(codigo)){
 
-document.addEventListener("keydown",function(e){
-   if(gameOver){
-      location.reload();
+   document.getElementById("loginMsg")
+   .textContent =
+   "Código inválido";
+
+   return;
+ }
+
+ if(localStorage.getItem("codigo_"+codigo)){
+
+   document.getElementById("loginMsg")
+   .textContent =
+   "Código já utilizado";
+
+   return;
+ }
+
+ localStorage.setItem(
+   "codigo_"+codigo,
+   "usado"
+ );
+
+ startGame();
+}
+
+function startGame(){
+
+ document.getElementById("start").style.display="none";
+
+ bgMusic.play();
+
+ running=true;
+
+ newTarget();
+}
+
+function finish(win){
+
+ running=false;
+ bgMusic.pause();
+
+ document.getElementById("overlay").style.display="flex";
+
+ if(win){
+
+   const hoje = new Date();
+
+   const dia =
+   String(hoje.getDate()).padStart(2,"0");
+
+   const mes =
+   String(hoje.getMonth()+1).padStart(2,"0");
+
+   const ano =
+   String(hoje.getFullYear()).slice(-2);
+
+   const dataCodigo =
+   dia + mes + ano;
+
+   const mapa = {
+     "0":"A",
+     "1":"B",
+     "2":"C",
+     "3":"D",
+     "4":"E",
+     "5":"F",
+     "6":"G",
+     "7":"H",
+     "8":"I",
+     "9":"J"
+   };
+
+   let letras="";
+
+   for(let c of dataCodigo){
+     letras += mapa[c];
    }
-});
+
+   let codigoFinal="";
+
+   for(let letra of letras){
+
+     codigoFinal += Math.floor(Math.random()*10);
+     codigoFinal += letra;
+     codigoFinal += Math.floor(Math.random()*10);
+   }
+
+   document.getElementById("title").textContent =
+   "🏆 PARABÉNS";
+
+   document.getElementById("msg").innerHTML =
+   "Apresente este código:<br><br>" +
+   "<span style='font-size:34px;font-weight:bold'>" +
+   codigoFinal +
+   "</span>";
+
+ }else{
+
+   document.getElementById("title").textContent =
+   "⏰ TEMPO ESGOTADO";
+
+   document.getElementById("msg").textContent =
+   "Você completou " +
+   completed +
+   " de 10 dezenas.";
+ }
+}
+
+
+
+setInterval(()=>{
+ if(!running)return;
+ time--;
+ let m=String(Math.floor(time/60)).padStart(2,"0");
+ let s=String(time%60).padStart(2,"0");
+ document.getElementById("timer").textContent=m+":"+s;
+ if(time<=0) finish(false);
+},1000);
 
 loop();
 </script>
