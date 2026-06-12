@@ -242,19 +242,41 @@ function loop(){
  draw();
  requestAnimationFrame(loop);
 }
-const codigosValidos = [
+function dataHoje(){
 
-"12345678",
-"87654321",
-"32156412",
-"11111111",
-"22222222",
-"33333333",
-"44444444",
-"55555555",
-"66666666"
+const hoje = new Date();
 
-];
+const dia =
+String(hoje.getDate()).padStart(2,"0");
+
+const mes =
+String(hoje.getMonth()+1).padStart(2,"0");
+
+const ano =
+String(hoje.getFullYear());
+
+return dia + mes + ano;
+}
+
+function codigoValido(codigo){
+
+if(!/^\d{8}$/.test(codigo))
+return false;
+
+const base =
+parseInt(codigo.substring(0,4));
+
+const verificador =
+parseInt(codigo.substring(4));
+
+const chave =
+parseInt(dataHoje());
+
+const calculado =
+((base * 7) + chave) % 10000;
+
+return calculado === verificador;
+}
 
 function validarCodigo(){
 
@@ -272,14 +294,16 @@ function validarCodigo(){
    return;
  }
 
- if(!codigosValidos.includes(codigo)){
+ if(!codigoValido(codigo)){
 
-   document.getElementById("loginMsg")
-   .textContent =
-   "Código inválido";
+document.getElementById("loginMsg")
+.textContent =
+"Código inválido";
 
-   return;
- }
+return;
+}
+
+
 
  if(localStorage.getItem("codigo_"+codigo)){
 
